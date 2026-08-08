@@ -4,6 +4,7 @@
 #include <conio.h>  // Required for _kbhit() and _getch()
 #include <fstream>  // For file handling (storing best score and best time)
 #include <sstream>  // For stringstream (convert int to string)
+#include "help.h"
 const int NUM_ALIENS = 50;//global scope
 using namespace std;
 void saveGame(int jetX, int jetY, int lives, int score, int* alienX, int* alienY, bool* alienAlive)//function to save the co ordinates and the lives and score along with saving the game.
