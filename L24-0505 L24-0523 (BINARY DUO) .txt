@@ -1,0 +1,681 @@
+#include <iostream>
+#include <windows.h>//for sleep function to avoid high cpu usage
+#include <ctime>// to add time functionality
+#include <conio.h>  // Required for _kbhit() and _getch()
+#include <fstream>  // For file handling (storing best score and best time)
+#include <sstream>  // For stringstream (convert int to string)
+const int NUM_ALIENS = 50;//global scope
+using namespace std;
+void saveGame(int jetX, int jetY, int lives, int score, int* alienX, int* alienY, bool* alienAlive)//function to save the co ordinates and the lives and score along with saving the game.
+{
+    ofstream outFile("savedgame.txt");
+    if (outFile.is_open()) {
+        outFile << jetX << " " << jetY << " " << lives << " " << score << endl;//score lives and co ordinates handlong
+        for (int i = 0; i < NUM_ALIENS; i++) {
+            outFile << alienX[i] << " " << alienY[i] << " " << alienAlive[i] << endl; // Saving the  aliens  state at that moment
+        }
+        outFile.close();
+        cout << "Game saved." << endl;
+    }
+    else 
+    {    
+        cout << "Error, could not open the file!" << endl;
+    }
+}
+void loadGame(int& jetX, int& jetY, int& lives, int& score, int* alienX, int* alienY, bool* alienAlive) //to implement the saved resources when the game is loaded
+{
+    ifstream inFile("savedgame.txt");
+    if (inFile.is_open()) {
+        inFile >> jetX >> jetY >> lives >> score;
+
+        for (int i = 0; i < NUM_ALIENS; i++) {
+            inFile >> alienX[i] >> alienY[i] >> alienAlive[i]; // Loading alien state
+        }
+
+        inFile.close();
+        cout << "Game loaded succesfully." << endl;
+    }
+    else {
+        cout << " game not saved!" << endl;
+    }
+}
+
+int main() {
+    // Constants
+    const int SCREEN_WIDTH = 1400;//to frame the game
+    const int SCREEN_HEIGHT = 700;//to frame the game
+    const int ALIEN_SIZE = 40;//accoridnng to the settles frame
+    const int JET_SIZE = 40;
+    const int BULLET_SIZE = 6;
+    const int MAX_BULLETS = 10;
+    const int MAX_HIGH_SCORES = 5;
+
+    // Game objects
+    int jetX = 50, jetY = SCREEN_HEIGHT / 2;
+    int bulletX[MAX_BULLETS]{}, bulletY[MAX_BULLETS]{};
+    bool bulletActive[MAX_BULLETS] = { false };
+    int alienX[NUM_ALIENS]{}, alienY[NUM_ALIENS]{};
+    bool alienAlive[NUM_ALIENS] = { false };
+    int score = 0;
+    bool gameOver = false;
+    int lives = 4; // Starting with 4 lives
+    bool isPaused = false;//primarily when the game is not started
+    bool gameWon = false;//primarily when the game is not started
+
+    int currentScore = 0;//initial values
+    int bestScore = 0;
+    int bestTime = 0;
+    int currentTime = 0;
+
+
+    // High Scores
+    int highScores[MAX_HIGH_SCORES] = { 0 }; // Initializing with zero
+
+    // Loading high scores from a file
+    ifstream inFile("highscores.txt");
+    if (inFile) {
+        for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+            inFile >> highScores[i];
+        }
+        inFile.close();
+    }
+
+    // Menu interface (start screen)
+    bool gameRunning = true;
+    while (gameRunning) {
+        // Drawing the menu
+        myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0); // For Clearing screen
+        drawText(48, 600, 100, 0,102,102, "SPACE INVADERS");
+        drawText(24, 620, 250, 153, 255, 255, "1. Start New Game");
+        drawText(24, 620, 300, 153, 255, 255, "2. Load Game");
+        drawText(24, 620, 350, 153, 255, 255, "3. Quit");
+
+        if (_kbhit()) //this  is from where the mode selecting phase starts,
+        {
+            char key = _getch();//if the key 1 is pressed,the new game is started with described functionalities
+            if (key == '1')
+            {
+                
+                int bestScore = 0;
+                int zigzagDirection = -1; // 1 for moving down, -1 for moving up.initially -1 so that it moves fastly from the start unlike the scenarios for 1.
+                score = 0;
+                lives = 4;
+                gameOver = false;
+                gameWon = false;
+
+                // Time tracking
+                time_t startTime;
+                double bestTime = -1;
+
+                // Initialize aliens
+                int rowSpacing = SCREEN_HEIGHT / 7;  // Reducing space for a denser alien grid closely situated
+                int colSpacing = SCREEN_WIDTH / 26;//same point of view as above :p
+
+                for (int i = 0; i < NUM_ALIENS; ++i) {
+                    alienX[i] = SCREEN_WIDTH - 150 - (i % 10) * colSpacing;  // Spreading across 10 columns
+                    alienY[i] = 50 + (i / 10) * rowSpacing + (i % 2) * 20;    // Alternating tje height for thee zig-zag effect
+                    alienAlive[i] = true;//alkiens are  present on the screen
+                }
+
+                time(&startTime);
+                while (!gameOver) 
+                {
+                    // Checking for keypresses
+                    if (_kbhit()) {
+                        int key = _getch();
+                        if (key == 27) { // Escape key is  pressed
+                            isPaused = !isPaused;  // Toggle the pause state
+
+                            // Displaying pause menu
+                            while (isPaused) {
+                                // Clearing the screen
+                                myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);
+
+                                // Displaying "Resume" and "Quit" options
+                                drawText(35, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 100, 128, 128, 128, "Game Paused");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 - 20, 102, 255, 255, "Press 'R' to Resume");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 + 50, 102, 255, 255, "Press 'Q' to Quit");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 + 120, 102, 255, 255, "Press 'S' to save game");
+
+                                // Waiting for user input to resume or quit
+                                if (_kbhit()) {
+                                    int pauseKey = _getch();
+                                    if (pauseKey == 'R' || pauseKey == 'r' || pauseKey == 27) { // Resuming on 'R' or Escape key
+                                        isPaused = false;
+                                    }
+                                    else if (pauseKey == 'Q' || pauseKey == 'q') { // Quiting on 'Q'
+                                        gameOver = true;
+                                        isPaused = false;
+                                    }
+                                    else if (pauseKey == 's' || pauseKey == 'S') {
+                                        isPaused = true;
+                                        cout << "Game paused. Press R to resume or S to save." << endl;
+                                        while (isPaused) {
+                                            char key = _getch();
+                                            if (key == 'r' || key == 'R') {
+                                                isPaused = false;
+                                                cout << "Game resumed." << endl;
+                                            }
+                                            else if (key == 's' || key == 'S') {
+                                                saveGame(jetX, jetY, lives, score, alienX, alienY, alienAlive);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Sleep(50); // To avoid high CPU usage during pause
+                        }
+                        else if (key == 75 && jetX > 1) {         // Left arrow
+                            jetX -= 7;
+                        }
+                        else if (key == 72 && jetY > 1) { // Up arrow
+                            jetY -= 7;
+                        }
+                        else if (key == 77 && jetX + JET_SIZE < SCREEN_WIDTH - 1) {  // Right arrow
+                            jetX += 7;
+                        }
+                        else if (key == 80 && jetY + 10 < SCREEN_HEIGHT - 1) {       // Down arrow
+                            jetY += 7;
+                        }
+                        else if (key == 32) {  // Space (Shoot)
+                            for (int i = 0; i < MAX_BULLETS; ++i) {
+                                if (!bulletActive[i]) {
+                                    bulletX[i] = jetX + JET_SIZE / 2;
+                                    bulletY[i] = jetY + 5;
+                                    bulletActive[i] = true;
+                                    break;  // Fire only one bullet at a time
+                                }
+                            }
+                        }
+                    }
+
+                    // llogic for Moving bullets
+                    for (int i = 0; i < MAX_BULLETS; ++i) {
+                        if (bulletActive[i]) {
+                            bulletX[i] += 14;  // Move bullet right
+                            if (bulletX[i] > SCREEN_WIDTH) {
+                                bulletActive[i] = false;  // Reset bullet if it goes off-screen
+                            }
+                        }
+                    }
+
+                    // logic for Moving aliens
+                    bool allAliensDead = true; // Checking if all aliens are dead
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i]) {
+                            alienX[i] -= 2;  // Moving aliens left(check of speed)
+                            alienY[i] += zigzagDirection; // Moving in zig-zag
+
+                            // Changing direction and move down or up when hitting the bottom or top of the screen
+                            if (alienY[i] <= 50) {
+                                zigzagDirection = 5; // Change to moving down
+                            }
+                            else if (alienY[i] >= SCREEN_HEIGHT - ALIEN_SIZE) {
+                                zigzagDirection = -5; // Change to moving up
+                            }
+
+                            if (alienX[i] < 0) {
+                                gameOver = true; // Game over if any alien reaches the left
+                            }
+                            allAliensDead = false; // Not all aliens are dead
+                        }
+                    }
+
+                    // Checking if all aliens are dead
+                    if (allAliensDead) {
+                        gameOver = true;
+                        gameWon = true;
+                    }
+
+                    // Checking collisions between aliens and jet (decrease lives)
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i] && alienX[i] < jetX + JET_SIZE && alienX[i] + ALIEN_SIZE > jetX && alienY[i] < jetY + JET_SIZE && alienY[i] + ALIEN_SIZE > jetY)//checking thee overlappping of the jet and aliens.
+                        {
+                            lives--;  // Reduce life
+                            alienAlive[i] = false;  // Alien is destroyed
+                            jetX = 50;  // Reseting jet position
+                            jetY = SCREEN_HEIGHT / 2;  // Reseting jet Y position
+
+                            if (lives <= 0) {
+                                gameOver = true;  // Ending the game if no lives remain
+                            }
+                        }
+                    }
+
+                    // Checking collisions with bullets
+                    for (int i = 0; i < NUM_ALIENS; ++i) 
+                    {
+                        if (alienAlive[i])
+                        {
+                            for (int j = 0; j < MAX_BULLETS; ++j) 
+                            {//the co ordinate overlap check starts froom here
+                                if (bulletActive[j] &&
+                                    bulletX[j] >= alienX[i] &&
+                                    bulletX[j] <= alienX[i] + ALIEN_SIZE &&
+                                    bulletY[j] >= alienY[i] &&
+                                    bulletY[j] <= alienY[i] + ALIEN_SIZE)
+                                {
+                                    alienAlive[i] = false;  // Alien is hit
+                                    bulletActive[j] = false;  // Reseting bullet
+                                    score += 20;             // Updating score
+                                }
+                            }
+                        }
+                    }
+
+                    // Clearing screen to avoid flickeriing
+                    myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);  // Black background
+
+                    // Drawing jet structure
+                    myRect(jetX, jetY, jetX + 40, jetY + 20, 0, 0, 255);  // blue body
+                    myRect(jetX - 10, jetY + 10, jetX, jetY + 15, 255, 255, 0);  // Left wing
+                    myRect(jetX + 40, jetY + 10, jetX + 50, jetY + 15, 255, 255, 0);  // Right wing
+                    myLine(jetX + 40, jetY, jetX + 50, jetY + 10, 255, 0, 0);  // Nose line
+                    myLine(jetX + 40, jetY + 20, jetX + 50, jetY + 10, 255, 0, 0);  // Nose line
+                    // Draw bullets
+                    for (int i = 0; i < MAX_BULLETS; ++i) {
+                        if (bulletActive[i]) {
+                            myRect(bulletX[i], bulletY[i], bulletX[i] + BULLET_SIZE, bulletY[i] + 4, 255, 0, 0);  // Red Bullet
+                        }
+                    }
+
+                    // Draw aliens
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i]) {
+                            // Body
+                            myRect(alienX[i], alienY[i], alienX[i] + ALIEN_SIZE, alienY[i] + ALIEN_SIZE, 176, 183, 117);
+                            // Eyes
+                            myRect(alienX[i] + 10, alienY[i] + 10, alienX[i] + 15, alienY[i] + 15, 0, 255, 0);  // Left eye
+                            myRect(alienX[i] + 25, alienY[i] + 10, alienX[i] + 30, alienY[i] + 15, 0, 255, 0);  // Right eye
+                            // Mouth
+                            myRect(alienX[i] + 15, alienY[i] + 25, alienX[i] + 25, alienY[i] + 30, 0, 255, 0);
+                        }
+                    }
+
+                    // Displaying the panel (Score, Time, and Lives)
+                    time_t currentTime;
+                    time(&currentTime);
+                    double elapsedTime = difftime(currentTime, startTime);
+
+                    // Text for Score, Time, and Lives
+                    drawText(16, 10, 15, 0, 255, 128, "Score:");
+                    drawText(16, 500, 15, 0, 255, 128, "Time:");
+                    drawText(16, 1100, 15, 0, 255, 128, "Lives:");
+
+                    // Displaying corresponding values for Score, Time, and Lives
+                    stringstream scoreStream, timeStream, livesStream;
+                    scoreStream << score;
+                    timeStream << (int)elapsedTime << " s";
+                    livesStream << lives;
+
+                    drawText(16, 105, 15, 0, 204, 204, scoreStream.str().c_str());
+                    drawText(16, 605, 15, 0, 204, 204, timeStream.str().c_str());
+                    drawText(16, 1205, 15, 0, 204, 204, livesStream.str().c_str());
+
+                    Sleep(30); // Controling frame rate to avoid flickering
+                }
+
+                // End time and displaying results
+                double gameTime = difftime(currentTime, startTime);
+
+                // Check for high score
+                for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                    if (score > highScores[i]) {
+                        for (int j = MAX_HIGH_SCORES - 1; j > i; --j)
+                        {
+                            highScores[j] = highScores[j - 1]; // Shifting scores down  the list
+                        }
+                        highScores[i] = score;  // Inserting new high score 
+                        break;
+                    }
+                }
+                if (score > bestScore) //condition to update the score.
+                {
+                    bestScore = score;
+                }
+                if (bestTime < 0 || gameTime < bestTime)//the best time to complete the game.
+                {
+                    bestTime = gameTime;
+                }
+                // Saving updated high scores to the file
+                ofstream outFile("highscores.txt");
+                for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                    outFile << highScores[i] << endl;
+                }
+                outFile.close();
+
+                // Clearing screen
+                myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0); 
+                stringstream endMessage;//end game display
+                endMessage << "Game Over! Final Score: " << score;
+                drawText(30, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 70, 255, 128, 0, endMessage.str().c_str());
+                stringstream bestMessage;
+                bestMessage << "Best Score: " << bestScore;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                }
+                drawText(24, SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 10, 33, 222, 111, bestMessage.str().c_str());
+
+                stringstream bestTimeMessage;
+                bestTimeMessage << "TIME TAKEN: " << (int)bestTime << " s";
+                drawText(24, SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 90, 201, 165, 179, bestTimeMessage.str().c_str());
+                //code for high score displaying.
+
+                // High score display options
+                drawText(24, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 + 150, 69, 88, 147, "Press 'H' to View High Scores");
+                drawText(24, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 + 200, 89, 71, 32, "Press 'Q' to Quit");
+
+                // Handling post-game options
+                while (true) {
+                    if (_kbhit()) {
+                        char key = _getch();
+                        if (key == 'H' || key == 'h') {
+                            // Displaying the high scores we stored above in the array
+                            myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);
+                            drawText(32, SCREEN_WIDTH / 2 - 150, 60, 176, 183, 117, "HIGH SCORES:");
+                            for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                                stringstream scoreMessage;
+                                scoreMessage << (i + 1) << ". " << highScores[i];
+                                drawText(24, SCREEN_WIDTH / 2 - 70, 150 + (i * 50), 128, 255, 0, scoreMessage.str().c_str());
+                            }
+                            // Quit option
+                            drawText(24, SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT - 100, 176, 183, 117, "Press 'Q' to Quit");
+                        }
+                        else if (key == 'Q' || key == 'q') {
+                            break;  // Quiting the program
+                        }
+                    }
+                    Sleep(50);  // To avoid high CPU usage
+                }
+
+                // Clearing and exiting the game loop
+                return 0;
+            }
+            else if (key == '2') {//to process the saved game
+                // Loading Game
+                loadGame(jetX, jetY, lives, currentScore, alienX, alienY, alienAlive);
+                score = currentScore;  // Seting score to loaded score
+
+                // Initializing gameplay state for the loaded game
+                gameOver = false; // Reseting game over state after loading
+                int zigzagDirection = -1; // To manage alien movement
+                time_t startTime, currentTime ; 
+                    
+               
+                time(&startTime);
+
+                // Gameplay loop
+                while (!gameOver) 
+                {
+                    // Checking for keypresses
+                    if (_kbhit()) {
+                        int key = _getch();
+                        if (key == 27) { // Escape key pressed
+                            isPaused = !isPaused;  // Toggle the pause state
+
+                            // Displaying pause menu
+                            while (isPaused) {
+                                // Clearing the screen
+                                myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);
+
+                                // Displaying "Resume" and "Quit" options
+                                drawText(35, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 100, 128, 128, 128, "Game Paused");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 - 20, 102, 255, 255, "Press 'R' to Resume");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 + 50, 102, 255, 255, "Press 'Q' to Quit");
+                                drawText(32, SCREEN_WIDTH / 2 - 220, SCREEN_HEIGHT / 2 + 120, 102, 255, 255, "Press 'S' to save game");
+
+                                // Waiting for user input to resume or quit
+                                if (_kbhit()) {
+                                    int pauseKey = _getch();
+                                    if (pauseKey == 'R' || pauseKey == 'r' || pauseKey == 27) { // Resume on 'R' or Escape key
+                                        isPaused = false;
+                                    }
+                                    else if (pauseKey == 'Q' || pauseKey == 'q') { // Quit on 'Q'
+                                        gameOver = true;
+                                        isPaused = false;
+                                    }
+                                    else if (pauseKey == 's' || pauseKey == 'S') {
+                                        isPaused = true;
+                                        saveGame(jetX, jetY, lives, score, alienX, alienY, alienAlive);
+                                        isPaused = false; // Resume immediately after saving
+                                    }
+                                }
+                            }
+
+                            Sleep(50); // To avoid high CPU usage during pause
+                        }
+                        else if (key == 75 && jetX > 1) {         // Left arrow
+                            jetX -= 7;
+                        }
+                        else if (key == 72 && jetY > 1) { // Up arrow
+                            jetY -= 7;
+                        }
+                        else if (key == 77 && jetX + JET_SIZE < SCREEN_WIDTH - 1) {  // Right arrow
+                            jetX += 7;
+                        }
+                        else if (key == 80 && jetY + 10 < SCREEN_HEIGHT - 1) {       // Down arrow
+                            jetY += 7;
+                        }
+                        else if (key == 32) {  // Space (Shoot)
+                            for (int i = 0; i < MAX_BULLETS; ++i) {
+                                if (!bulletActive[i]) {
+                                    bulletX[i] = jetX + JET_SIZE / 2;
+                                    bulletY[i] = jetY + 5;
+                                    bulletActive[i] = true;
+                                    break;  // Fire only one bullet at a time
+                                }
+                            }
+                        }
+                    }
+
+                    // Move bullets
+                    for (int i = 0; i < MAX_BULLETS; ++i) {
+                        if (bulletActive[i]) {
+                            bulletX[i] += 14;  // Move bullet right
+                            if (bulletX[i] > SCREEN_WIDTH) {
+                                bulletActive[i] = false;  // Reseting bullet if it goes off-screen
+                            }
+                        }
+                    }
+
+                    // Moving aliens
+                    bool allAliensDead = true; // Checking if all aliens are dead
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i]) {
+                            alienX[i] -= 2;  //to Move aliens left
+                            alienY[i] += zigzagDirection; // Move in zig-zag
+
+                            // Changing direction and move down or up when hitting the bottom or top of the screen
+                            if (alienY[i] <= 50) {
+                                zigzagDirection = 5; // Change to moving down
+                            }
+                            else if (alienY[i] >= SCREEN_HEIGHT - ALIEN_SIZE) {
+                                zigzagDirection = -5; // Change to moving up
+                            }
+
+                            if (alienX[i] < 0) {
+                                gameOver = true; // Game over if any alien reaches the left
+                            }
+                            allAliensDead = false; // Not all aliens are dead
+                        }
+                    }
+                    // Checking if all aliens are dead
+                    if (allAliensDead) {
+                        gameOver = true;
+                        gameWon = true;
+                    }
+
+                    // Checking collisions between aliens and jet (decrease lives)
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i] && alienX[i] < jetX + JET_SIZE && alienX[i] + ALIEN_SIZE > jetX && alienY[i] < jetY + JET_SIZE && alienY[i] + ALIEN_SIZE > jetY) {
+                            lives--;  // Reducing life count
+                            alienAlive[i] = false;  // Alien destroyed
+                            jetX = 50;  // Reseting jet position
+                            jetY = SCREEN_HEIGHT / 2;  // Reseting jet Y position
+
+                            if (lives <= 0) {
+                                gameOver = true;  // Ending the game if no lives remain
+                            }
+                        }
+                    }
+
+                    // Checking collisions with bullets
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i]) {
+                            for (int j = 0; j < MAX_BULLETS; ++j) {
+                                if (bulletActive[j] &&
+                                    bulletX[j] >= alienX[i] &&
+                                    bulletX[j] <= alienX[i] + ALIEN_SIZE &&
+                                    bulletY[j] >= alienY[i] &&
+                                    bulletY[j] <= alienY[i] + ALIEN_SIZE) {
+                                    alienAlive[i] = false;  // Alien is hit
+                                    bulletActive[j] = false;  // Reseting bullet
+                                    score += 20;             // Updating score
+                                }
+                            }
+                        }
+                    }
+
+                    // Clearing screen
+                    myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);  // Black background
+
+                    // Draw jet
+                    myRect(jetX, jetY, jetX + 40, jetY + 20, 0, 0, 255);  // Blue body
+                    myRect(jetX - 10, jetY + 10, jetX, jetY + 15, 255, 255, 0);  // Left wing
+                    myRect(jetX + 40, jetY + 10, jetX + 50, jetY + 15, 255, 255, 0);  // Right wing
+                    myLine(jetX + 40, jetY, jetX + 50, jetY + 10, 255, 0, 0);  // Nose line
+                    myLine(jetX + 40, jetY + 20, jetX + 50, jetY + 10, 255, 0, 0);  // Nose line
+
+                    // Draw bullets
+                    for (int i = 0; i < MAX_BULLETS; ++i) {
+                        if (bulletActive[i]) {
+                            myRect(bulletX[i], bulletY[i], bulletX[i] + BULLET_SIZE, bulletY[i] + 4, 255, 0, 0);  // Red Bullet
+                        }
+                    }
+
+                    // Draw aliens
+                    for (int i = 0; i < NUM_ALIENS; ++i) {
+                        if (alienAlive[i]) {
+                            // Body
+                            myRect(alienX[i], alienY[i], alienX[i] + ALIEN_SIZE, alienY[i] + ALIEN_SIZE, 176, 183, 117);
+                            // Eyes
+                            myRect(alienX[i] + 10, alienY[i] + 10, alienX[i] + 15, alienY[i] + 15, 0, 255, 0);  // Left eye
+                            myRect(alienX[i] + 25, alienY[i] + 10, alienX[i] + 30, alienY[i] + 15, 0, 255, 0);  // Right eye
+                            // Mouth
+                            myRect(alienX[i] + 15, alienY[i] + 25, alienX[i] + 25, alienY[i] + 30, 0, 255, 0);
+                        }
+                    }
+
+                    // Displaying the panel (Score, Time, and Lives)
+                    time(&currentTime);
+                    double elapsedTime = difftime(currentTime, startTime);
+
+                    // Text for Score, Time, and Lives
+                    drawText(16, 10, 15, 0, 255, 128, "Score:");
+                    drawText(16, 500, 15, 0, 255, 128, "Time:");
+                    drawText(16, 1100, 15, 0, 255, 128, "Lives:");
+
+                    // Displaying corresponding values for Score, Time, and Lives
+                    stringstream scoreStream, timeStream, livesStream;
+                    scoreStream << score;
+                    timeStream << (int)elapsedTime << " s";
+                    livesStream << lives;
+
+                    drawText(16, 105, 15, 0, 204, 204, scoreStream.str().c_str());
+                    drawText(16, 605, 15, 0, 204, 204, timeStream.str().c_str());
+                    drawText(16, 1205, 15, 0, 204, 204, livesStream.str().c_str());
+
+                    Sleep(30); // Controlling frame rate
+                }
+
+                // End time and displaying results
+                double gameTime = difftime(currentTime, startTime);
+
+                // Check for high score
+                for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                    if (score > highScores[i]) {
+                        for (int j = MAX_HIGH_SCORES - 1; j > i; --j) {
+                            highScores[j] = highScores[j - 1];  // Shifting scores down
+                        }
+                        highScores[i] = score;  // Inserting new high score
+                        break;
+                    }
+                }
+                if (score > bestScore) //condition to update the score.
+                {
+                    bestScore = score;
+                }
+                if (bestTime < 0 || gameTime < bestTime)//the best time to complete the game.
+                {
+                    bestTime = gameTime;
+                }
+
+                // Save updated high scores to the file
+                ofstream outFile("highscores.txt");
+                for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                    outFile << highScores[i] << endl;
+                }
+                outFile.close();
+
+                // Clear screen
+                myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);  
+                stringstream endMessage;
+                endMessage << "Game Over! Final Score: " << score;
+                drawText(30, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 70, 255, 128, 0, endMessage.str().c_str());
+                stringstream bestMessage;
+                bestMessage << "Best Score: " << bestScore;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                }
+                drawText(24, SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 10, 33, 222, 111, bestMessage.str().c_str());
+
+                stringstream bestTimeMessage;
+                bestTimeMessage << "TIME TAKEN: " << (int)bestTime << " s";
+                drawText(24, SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 + 90, 201, 165, 179, bestTimeMessage.str().c_str());
+                //code for high score displaying.
+
+                // High score display options
+                drawText(24, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 + 150, 69, 88, 147, "Press 'H' to View High Scores");
+                drawText(24, SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 + 200, 89, 71, 32, "Press 'Q' to Quit");
+
+                // Handling post-game options
+                while (true) {
+                    if (_kbhit()) {
+                        char key = _getch();
+                        if (key == 'H' || key == 'h') {
+                            // Displaying the high scores we stored above in the array
+                            myRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0);
+                            drawText(32, SCREEN_WIDTH / 2 - 150, 60, 176, 183, 117, "HIGH SCORES:");
+                            for (int i = 0; i < MAX_HIGH_SCORES; ++i) {
+                                stringstream scoreMessage;
+                                scoreMessage << (i + 1) << ". " << highScores[i];
+                                drawText(24, SCREEN_WIDTH / 2 - 70, 150 + (i * 50), 128, 255, 0, scoreMessage.str().c_str());
+                            }
+                            // Quit option
+                            drawText(24, SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT - 100, 176, 183, 117, "Press 'Q' to Quit");
+                        }
+                        else if (key == 'Q' || key == 'q') {
+                            break;  // Quiting the program
+                        }
+                    }
+                    Sleep(50);  // To avoid high CPU usage
+                }
+
+                // Clearing and exiting the game loop
+                return 0;
+            }
+            else if (key == '3') {
+                // Quitting the game
+                gameRunning = false;
+            }
+        }
+
+        Sleep(100); // Sleep to prevent high CPU usage
+    }
+
+    return 0;
+}
+//AND THATS ALL :)
